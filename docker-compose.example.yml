@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      # Required. Initial database name created by Postgres.
+      POSTGRES_DB: cardkeepr
+      # Required. Database user created by Postgres.
+      POSTGRES_USER: cardkeepr
+      # Required. Database password for POSTGRES_USER.
+      POSTGRES_PASSWORD: change_this_database_password
+    volumes:
+      # Required. Persist database files across container restarts/rebuilds.
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # Required by app depends_on below. Wait until DB accepts connections.
+      test: ["CMD-SHELL", "pg_isready -U cardkeepr -d cardkeepr"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    image: ghcr.io/abort-retry-ignore/card-keepr:latest
+    restart: unless-stopped
+    depends_on:
+      # Required. Do not start app until database healthcheck passes.
+      postgres:
+        condition: service_healthy
+    ports:
+      # App listens on fixed internal port 3006.
+      # This maps host port 3006 to container port 3006.
+      - "3006:3006"
+    environment:
+      # Required. Full PostgreSQL connection string used by Express server.
+      DATABASE_URL: postgresql://cardkeepr:change_this_database_password@postgres:5432/cardkeepr
+
+      # Optional. Seed admin user on first boot.
+      # Leave both APP_LOGIN_USERNAME and APP_LOGIN_PASSWORD empty to disable seeding.
+      APP_LOGIN_USERNAME: admin
+      APP_LOGIN_PASSWORD: change_me_10chars
+
+      # Required. Long random secret for signed session cookies.
+      # Keep stable after deploy or all current logins break.
+      SESSION_SECRET: replace_with_long_random_secret_string
+
+      # Optional. Session lifetime in days. Default in app is 3650.
+      SESSION_MAX_AGE_DAYS: "3650"
+
+      # Optional. Force Secure cookie flag when running behind HTTPS reverse proxy.
+      # Use "true" only when site is actually served over HTTPS,
+      # for example https://card-keepr.example.com
+      COOKIE_SECURE: "false"
+
+volumes:
+  # Required. Named volume for PostgreSQL data persistence.
+  postgres-data:
